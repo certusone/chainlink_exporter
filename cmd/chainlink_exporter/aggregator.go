@@ -1,0 +1,100 @@
+package main
+
+import (
+	"chainlink_exporter/abi"
+	"encoding/hex"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"go.uber.org/zap"
+	"sync"
+	"time"
+)
+
+type (
+	AggregatorMonitor struct {
+		aggregator *abi.Aggregator
+		address    common.Address
+
+		pendingJobs map[string]*abi.OracleOracleRequest
+
+		monitor *Monitor
+		lock    sync.Mutex
+	}
+)
+
+func NewAggregatorMonitor(agg *abi.Aggregator, addr common.Address, m *Monitor) *AggregatorMonitor {
+	return &AggregatorMonitor{
+		aggregator:  agg,
+		pendingJobs: map[string]*abi.OracleOracleRequest{},
+		monitor:     m,
+		address:     addr,
+	}
+}
+
+func (a *AggregatorMonitor) Monitor() {
+	for {
+		zap.L().Debug("Starting aggregator routine", zap.String("address", a.address.String()))
+		func() {
+			resChan := make(chan *abi.AggregatorChainlinkFulfilled)
+			sub, err := a.aggregator.WatchChainlinkFulfilled(&bind.WatchOpts{}, resChan, nil)
+			if err != nil {
+				zap.L().Error("failed to watch aggregator fulfillment", zap.Error(err), zap.String("address", a.address.String()))
+				return
+			}
+			defer sub.Unsubscribe()
+
+			for {
+				select {
+				case err = <-sub.Err():
+					zap.L().Error("aggregator fulfillment subscription errored", zap.Error(err), zap.String("address", a.address.String()))
+					return
+				case res, has := <-resChan:
+					if !has {
+					}
+					a.handleFulfillment(res)
+				}
+			}
+		}()
+
+		zap.L().Warn("aggregator routine died. restarting in 5sec", zap.String("address", a.address.String()))
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (a *AggregatorMonitor) HandleNewBlock(height uint64) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for reqID, n := range a.pendingJobs {
+		delta := int(height) - int(n.Raw.BlockNumber)
+		// todo make dynamic
+		if delta > 15 {
+			zap.L().Info("job fulfillment slot missed", zap.Uint64("height", n.Raw.BlockNumber),
+				zap.String("requester", n.Requester.String()), zap.Binary("request_id", n.RequestId[:]),
+				zap.ByteString("spec_id", n.SpecId[:]))
+			delete(a.pendingJobs, reqID)
+			a.monitor.HandleMiss(n)
+		}
+	}
+}
+
+func (a *AggregatorMonitor) handleRequest(res *abi.OracleOracleRequest) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a.pendingJobs[hex.EncodeToString(res.RequestId[:])] = res
+}
+
+func (a *AggregatorMonitor) handleFulfillment(res *abi.AggregatorChainlinkFulfilled) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	if job, ok := a.pendingJobs[hex.EncodeToString(res.Id[:])]; ok {
+		zap.L().Info("job fulfilled", zap.Uint64("height", res.Raw.BlockNumber),
+			zap.String("requester", job.Requester.String()), zap.Binary("request_id", job.RequestId[:]),
+			zap.ByteString("spec_id", job.SpecId[:]), zap.Uint64("request_height", job.Raw.BlockNumber))
+		delete(a.pendingJobs, hex.EncodeToString(res.Id[:]))
+
+		a.monitor.HandleFulfillment(res, job)
+	}
+}
