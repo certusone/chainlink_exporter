@@ -211,7 +211,7 @@ func (m *Monitor) pollRoutine() {
 	for {
 		zap.L().Info("Starting poll routine")
 		func() {
-			reqChan := make(chan *abi.OracleOracleRequest)
+			reqChan := make(chan *abi.OracleOracleRequest, 100)
 			sub, err := m.oracle.WatchOracleRequest(nil, reqChan, nil)
 			if err != nil {
 				zap.L().Error("failed to watch oracle requests", zap.Error(err))
@@ -219,7 +219,7 @@ func (m *Monitor) pollRoutine() {
 			}
 			defer sub.Unsubscribe()
 
-			headChan := make(chan *types.Header)
+			headChan := make(chan *types.Header, 100)
 			sub2, err := m.client.SubscribeNewHead(context.Background(), headChan)
 			if err != nil {
 				zap.L().Error("failed to subscribe to new heads", zap.Error(err))
@@ -237,6 +237,8 @@ func (m *Monitor) pollRoutine() {
 					return
 				case req, has := <-reqChan:
 					if !has {
+						zap.L().Error("request subscription closed", zap.Error(err))
+						return
 					}
 					err := m.handleRequest(req)
 					if err != nil {
@@ -245,6 +247,8 @@ func (m *Monitor) pollRoutine() {
 					}
 				case header, has := <-headChan:
 					if !has {
+						zap.L().Error("head subscription closed", zap.Error(err))
+						return
 					}
 
 					// Update balances
