@@ -211,8 +211,13 @@ func (m *Monitor) pollRoutine() {
 	for {
 		zap.L().Info("Starting poll routine")
 		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
+
 			reqChan := make(chan *abi.OracleOracleRequest, 100)
-			sub, err := m.oracle.WatchOracleRequest(nil, reqChan, nil)
+			sub, err := m.oracle.WatchOracleRequest(&bind.WatchOpts{
+				Context: ctx,
+			}, reqChan, nil)
 			if err != nil {
 				zap.L().Error("failed to watch oracle requests", zap.Error(err))
 				return
@@ -220,7 +225,7 @@ func (m *Monitor) pollRoutine() {
 			defer sub.Unsubscribe()
 
 			headChan := make(chan *types.Header, 100)
-			sub2, err := m.client.SubscribeNewHead(context.Background(), headChan)
+			sub2, err := m.client.SubscribeNewHead(ctx, headChan)
 			if err != nil {
 				zap.L().Error("failed to subscribe to new heads", zap.Error(err))
 				return

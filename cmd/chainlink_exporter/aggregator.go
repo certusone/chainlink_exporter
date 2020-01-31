@@ -2,6 +2,7 @@ package main
 
 import (
 	"chainlink_exporter/abi"
+	"context"
 	"encoding/hex"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,8 +39,11 @@ func (a *AggregatorMonitor) Monitor() {
 	for {
 		zap.L().Debug("Starting aggregator routine", zap.String("address", a.address.String()))
 		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+			defer cancel()
+
 			resChan := make(chan *abi.AggregatorChainlinkFulfilled)
-			sub, err := a.aggregator.WatchChainlinkFulfilled(&bind.WatchOpts{}, resChan, nil)
+			sub, err := a.aggregator.WatchChainlinkFulfilled(&bind.WatchOpts{Context: ctx}, resChan, nil)
 			if err != nil {
 				zap.L().Error("failed to watch aggregator fulfillment", zap.Error(err), zap.String("address", a.address.String()))
 				return
@@ -53,6 +57,8 @@ func (a *AggregatorMonitor) Monitor() {
 					return
 				case res, has := <-resChan:
 					if !has {
+						zap.L().Error("head subscription closed", zap.Error(err), zap.String("address", a.address.String()))
+						return
 					}
 					a.handleFulfillment(res)
 				}
