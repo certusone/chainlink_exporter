@@ -48,7 +48,6 @@ func (a *AggregatorMonitor) Monitor() {
 				zap.L().Error("failed to watch aggregator fulfillment", zap.Error(err), zap.String("address", a.address.String()))
 				return
 			}
-			defer sub.Unsubscribe()
 
 			for {
 				select {
