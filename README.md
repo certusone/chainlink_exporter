@@ -36,7 +36,7 @@ The configuration needs to be passed in via the environment.
 | cl_mon_response_time_bucket | histogram | Number of blocks taken to fulfill requests. Histograms are partitioned by the label `spec_id`. |
 | cl_mon_missed | counter | Number of missed requests. Labels indicate job/spec id, requester address. |
 | cl_mon_fulfilled | counter | Number of fulfilled requests. Labels indicate job/spec id, requester address. |
-| cl_mon_rewards | counter | Rewards collected in LINK. Labels indicate job/spec id, requester address and whether the request containing this payment was fulfilled successfully. **Only payments of fulfilled requests are withdrawable.** |
+| cl_mon_revenue | counter | Rewards collected in LINK. Labels indicate job/spec id, requester address and whether the request containing this payment was fulfilled successfully. **Only payments of fulfilled requests are withdrawable.** |
 | cl_mon_eth_balance | gauge | Eth balance of the node account. |
 | cl_mon_link_balance | gauge | LINK balance of the oracle contract. The value with `type=balance` is the ERC20 balance. The value with `type=withdrawable` is the withdrawable balance. |
 
