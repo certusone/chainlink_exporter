@@ -3,6 +3,7 @@ package main
 import (
 	"chainlink_exporter/abi"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -15,6 +16,7 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -291,7 +293,7 @@ func (m *Monitor) requestRoutine() {
 func (m *Monitor) handleRequest(req *abi.OracleOracleRequest) error {
 	logger := zap.L().With(zap.Uint64("height", req.Raw.BlockNumber),
 		zap.String("requester", req.Requester.String()), zap.Binary("request_id", req.RequestId[:]),
-		zap.ByteString("spec_id", req.SpecId[:]))
+		zap.String("spec_id", sanitizeSpecID(req.SpecId)))
 	logger.Info("received request")
 
 	if old := m.lastReqTime.Load(); old < req.Raw.BlockNumber {
@@ -334,13 +336,25 @@ func (m *Monitor) HandleFulfillment(res *abi.AggregatorChainlinkFulfilled, req *
 	}
 
 	deltaBlocks := res.Raw.BlockNumber - req.Raw.BlockNumber
-	m.responseTimeHistogram.WithLabelValues(string(req.SpecId[:])).Observe(float64(deltaBlocks))
 
-	m.fulfillmentCounter.WithLabelValues(string(req.SpecId[:]), req.Requester.String()).Inc()
-	m.revenueCounter.WithLabelValues(string(req.SpecId[:]), req.Requester.String(), "fulfilled").Add(float64(req.Payment.Uint64()) / params.Ether)
+	sanitizedSpecID := sanitizeSpecID(req.SpecId)
+	m.responseTimeHistogram.WithLabelValues(sanitizedSpecID).Observe(float64(deltaBlocks))
+
+	m.fulfillmentCounter.WithLabelValues(sanitizedSpecID, req.Requester.String()).Inc()
+	m.revenueCounter.WithLabelValues(sanitizedSpecID, req.Requester.String(), "fulfilled").Add(float64(req.Payment.Uint64()) / params.Ether)
 }
 
 func (m *Monitor) HandleMiss(req *abi.OracleOracleRequest) {
-	m.missCounter.WithLabelValues(string(req.SpecId[:]), req.Requester.String()).Inc()
-	m.revenueCounter.WithLabelValues(string(req.SpecId[:]), req.Requester.String(), "missed").Add(float64(req.Payment.Uint64()) / params.Ether)
+	sanitizedSpecID := sanitizeSpecID(req.SpecId)
+
+	m.missCounter.WithLabelValues(sanitizedSpecID, req.Requester.String()).Inc()
+	m.revenueCounter.WithLabelValues(sanitizedSpecID, req.Requester.String(), "missed").Add(float64(req.Payment.Uint64()) / params.Ether)
+}
+
+func sanitizeSpecID(specID [32]byte) string {
+	if !utf8.Valid(specID[:]) {
+		return hex.EncodeToString(specID[:])
+	} else {
+		return string(specID[:])
+	}
 }

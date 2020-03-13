@@ -79,7 +79,7 @@ func (a *AggregatorMonitor) HandleNewBlock(height uint64) {
 		if delta > 15 {
 			zap.L().Info("job fulfillment slot missed", zap.Uint64("height", n.Raw.BlockNumber),
 				zap.String("requester", n.Requester.String()), zap.Binary("request_id", n.RequestId[:]),
-				zap.ByteString("spec_id", n.SpecId[:]))
+				zap.String("spec_id", sanitizeSpecID(n.SpecId)))
 			delete(a.pendingJobs, reqID)
 			a.monitor.HandleMiss(n)
 		}
@@ -93,7 +93,7 @@ func (a *AggregatorMonitor) handleRequest(res *abi.OracleOracleRequest) {
 	if _, exists := a.seenRequestIDs[requestIDString]; exists {
 		zap.L().Info("request dropped; already seen same reqID", zap.Uint64("height", res.Raw.BlockNumber),
 			zap.String("requester", res.Requester.String()), zap.Binary("request_id", res.RequestId[:]),
-			zap.ByteString("spec_id", res.SpecId[:]), zap.Uint64("request_height", res.Raw.BlockNumber))
+			zap.String("spec_id", sanitizeSpecID(res.SpecId)), zap.Uint64("request_height", res.Raw.BlockNumber))
 		return
 	} else {
 		a.seenRequestIDs[requestIDString] = true
@@ -109,7 +109,7 @@ func (a *AggregatorMonitor) handleFulfillment(res *abi.AggregatorChainlinkFulfil
 	if job, ok := a.pendingJobs[hex.EncodeToString(res.Id[:])]; ok {
 		zap.L().Info("job fulfilled", zap.Uint64("height", res.Raw.BlockNumber),
 			zap.String("requester", job.Requester.String()), zap.Binary("request_id", job.RequestId[:]),
-			zap.ByteString("spec_id", job.SpecId[:]), zap.Uint64("request_height", job.Raw.BlockNumber))
+			zap.String("spec_id", sanitizeSpecID(job.SpecId)), zap.Uint64("request_height", job.Raw.BlockNumber))
 		delete(a.pendingJobs, hex.EncodeToString(res.Id[:]))
 
 		a.monitor.HandleFulfillment(res, job)
