@@ -1,5 +1,11 @@
 ## Chainlink oracle exporter
 
+**⚠️ Deprecation warning ⚠️:** Certus One is no longer running a Chainlink node and this exporter
+is unmaintained. It can't monitor Fluxmonitor and OCR jobs - see the monitoring channel in
+Chainlink's Slack for alternatives.
+
+---
+
 This prometheus exporter watches a Chainlink oracle smart contract on the Ethereum blockchain and measures metrics on
 request fulfillment.
 
